@@ -43,7 +43,7 @@ struct RecorderView: View {
                     .monospacedDigit()
 
                 if recorder.permissionDenied {
-                    Text("Microphone access is required. Enable it for MithunMusicApp in Settings.")
+                    Text("Microphone access is required. Enable it for Resonance in Settings.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
