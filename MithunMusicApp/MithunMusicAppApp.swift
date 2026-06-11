@@ -5,14 +5,18 @@
 //  Created by Mithun Samy on 11/06/26.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 @main
 struct MithunMusicAppApp: App {
+    @State private var playerManager = PlayerManager()
+    @State private var appState = AppState()
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Song.self,
+            Playlist.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
@@ -26,6 +30,11 @@ struct MithunMusicAppApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(playerManager)
+                .environment(appState)
+                .task {
+                    SampleLibrary.seedIfNeeded(context: sharedModelContainer.mainContext)
+                }
         }
         .modelContainer(sharedModelContainer)
     }

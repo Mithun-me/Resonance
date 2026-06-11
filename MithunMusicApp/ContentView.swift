@@ -5,57 +5,42 @@
 //  Created by Mithun Samy on 11/06/26.
 //
 
-import SwiftUI
 import SwiftData
+import SwiftUI
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Environment(PlayerManager.self) private var player
+    @Environment(AppState.self) private var appState
 
     var body: some View {
-        NavigationSplitView {
-            List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
-                    }
-                }
-                .onDelete(perform: deleteItems)
+        @Bindable var player = player
+        @Bindable var appState = appState
+        TabView(selection: $appState.selectedTab) {
+            Tab("Library", systemImage: "music.note.list", value: AppTab.library) {
+                LibraryView()
             }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
-                }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
+            Tab("Favorites", systemImage: "heart.fill", value: AppTab.favorites) {
+                FavoritesView()
             }
-        } detail: {
-            Text("Select an item")
+            Tab("Playlists", systemImage: "music.note.square.stack", value: AppTab.playlists) {
+                PlaylistsView()
+            }
+            Tab("Studio", systemImage: "waveform", value: AppTab.studio) {
+                StudioView()
+            }
         }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+        .tabViewBottomAccessory {
+            MiniPlayerBar()
         }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
-            }
+        .sheet(isPresented: $player.isPresentingFullPlayer) {
+            PlayerView()
         }
     }
 }
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [Song.self, Playlist.self], inMemory: true)
+        .environment(PlayerManager())
+        .environment(AppState())
 }
