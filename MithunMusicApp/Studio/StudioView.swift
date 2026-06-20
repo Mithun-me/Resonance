@@ -19,8 +19,9 @@ struct StudioView: View {
     @State private var peaks: [Float] = []
     @State private var isShowingRecorder = false
     @State private var isExporting = false
-    @State private var exportedTitle: String?
+    @State private var exportedSong: Song?
     @State private var didExportFail = false
+    @State private var shareItem: ShareItem?
 
     var body: some View {
         NavigationStack {
@@ -50,16 +51,25 @@ struct StudioView: View {
             .sheet(isPresented: $isShowingRecorder) {
                 RecorderView()
             }
+            .sheet(item: $shareItem) { item in
+                ActivityView(activityItems: [item.url])
+            }
             .alert(
                 "Saved to Library",
                 isPresented: Binding(
-                    get: { exportedTitle != nil },
-                    set: { if !$0 { exportedTitle = nil } }
-                )
-            ) {
-                Button("OK") {}
-            } message: {
-                Text("\"\(exportedTitle ?? "")\" is ready to play.")
+                    get: { exportedSong != nil },
+                    set: { if !$0 { exportedSong = nil } }
+                ),
+                presenting: exportedSong
+            ) { song in
+                Button("Share…") {
+                    if let url = TrackSharing.shareURL(for: song) {
+                        shareItem = ShareItem(url: url)
+                    }
+                }
+                Button("OK", role: .cancel) {}
+            } message: { song in
+                Text("\"\(song.title)\" is ready to play. Share it to send a copy anywhere.")
             }
             .alert("Export Failed", isPresented: $didExportFail) {
                 Button("OK") {}
@@ -224,6 +234,17 @@ struct StudioView: View {
             }
 
             Section {
+                Button(role: .destructive) {
+                    settings = EditSettings(trimStart: settings.trimStart, trimEnd: settings.trimEnd)
+                } label: {
+                    Label("Reset All Effects", systemImage: "arrow.counterclockwise")
+                }
+                .disabled(settings == EditSettings(trimStart: settings.trimStart, trimEnd: settings.trimEnd))
+            } footer: {
+                Text("Clears every effect back to neutral. Your trim is kept.")
+            }
+
+            Section {
                 Button {
                     Task { await exportEdit(of: song) }
                 } label: {
@@ -240,7 +261,7 @@ struct StudioView: View {
                 }
                 .disabled(isExporting || engine.duration == 0)
             } footer: {
-                Text("Renders the trim, fades, and effects into a new track in your Library.")
+                Text("Renders the trim, fades, and effects into a new track in your Library, ready to share.")
             }
         }
         .listStyle(.insetGrouped)
@@ -261,6 +282,21 @@ struct StudioView: View {
                 Image(systemName: engine.isPreviewing ? "stop.circle.fill" : "play.circle.fill")
                     .font(.system(size: 46))
             }
+
+            Button {
+                engine.isBypassed.toggle()
+            } label: {
+                Text("A/B")
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(engine.isBypassed ? Color.accentColor.opacity(0.18) : .clear, in: Capsule())
+                    .overlay(Capsule().stroke(engine.isBypassed ? Color.accentColor : .secondary, lineWidth: 1))
+                    .foregroundStyle(engine.isBypassed ? Color.accentColor : .secondary)
+            }
+            .accessibilityLabel(engine.isBypassed
+                ? "Auditioning the original. Tap to hear your edit."
+                : "Auditioning your edit. Tap to hear the original.")
 
             Spacer()
 
@@ -298,6 +334,7 @@ struct StudioView: View {
         }
         do {
             try engine.load(url: song.fileURL)
+            engine.isBypassed = false
             settings = EditSettings(trimStart: 0, trimEnd: engine.duration)
             peaks = try WaveformLoader.peaks(for: song.fileURL)
         } catch {
@@ -323,6 +360,7 @@ struct StudioView: View {
 
     private func exportEdit(of song: Song) async {
         engine.stopPreview()
+        engine.isBypassed = false
         isExporting = true
         defer { isExporting = false }
 
@@ -344,7 +382,7 @@ struct StudioView: View {
                 artworkData: song.artworkData
             )
             context.insert(edited)
-            exportedTitle = edited.title
+            exportedSong = edited
         } catch {
             try? FileManager.default.removeItem(at: outputURL)
             didExportFail = true

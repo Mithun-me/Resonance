@@ -25,6 +25,8 @@ struct LibraryView: View {
     @State private var searchText = ""
     @State private var sortMode: SortMode = .recentlyAdded
     @State private var isImporting = false
+    @State private var editingSong: Song?
+    @State private var shareItem: ShareItem?
 
     private var visibleSongs: [Song] {
         var result = songs
@@ -72,12 +74,25 @@ struct LibraryView: View {
                     }
                     .contextMenu {
                         Button {
+                            editingSong = song
+                        } label: {
+                            Label("Edit Info", systemImage: "pencil")
+                        }
+                        Button {
                             appState.studioSong = song
                             appState.selectedTab = .studio
                         } label: {
                             Label("Edit in Studio", systemImage: "waveform")
                         }
                         addToPlaylistMenu(for: song)
+                        Divider()
+                        Button {
+                            if let url = TrackSharing.shareURL(for: song) {
+                                shareItem = ShareItem(url: url)
+                            }
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
                     }
                 }
             }
@@ -113,6 +128,12 @@ struct LibraryView: View {
                 Task {
                     _ = await SongImporter.importSongs(from: urls, into: context)
                 }
+            }
+            .sheet(item: $editingSong) { song in
+                EditSongView(song: song)
+            }
+            .sheet(item: $shareItem) { item in
+                ActivityView(activityItems: [item.url])
             }
             .overlay {
                 if songs.isEmpty {

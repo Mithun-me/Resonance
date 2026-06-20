@@ -47,15 +47,15 @@ final class PlayerManager: NSObject {
 
     private var player: AVAudioPlayer?
     private var progressTimer: Timer?
+    private var didConfigureRemoteCommands = false
 
     var currentSong: Song? {
         queue.indices.contains(currentIndex) ? queue[currentIndex] : nil
     }
 
-    override init() {
-        super.init()
-        configureRemoteCommands()
-    }
+    // Note: deliberately no work in init. Touching MediaPlayer/AVAudioSession
+    // (both XPC-backed) is deferred until the first playback, so nothing
+    // reaches a system daemon during app bootstrap.
 
     // MARK: - Playback
 
@@ -69,6 +69,15 @@ final class PlayerManager: NSObject {
             currentIndex = songs.firstIndex { $0 === song } ?? 0
         }
         startCurrentSong()
+    }
+
+    /// Plays a collection from the top, or shuffled — used by the Play and
+    /// Shuffle buttons on a playlist. Sets the shuffle state to match the intent.
+    func play(_ songs: [Song], shuffled: Bool) {
+        guard !songs.isEmpty else { return }
+        isShuffling = shuffled
+        let start = shuffled ? (songs.randomElement() ?? songs[0]) : songs[0]
+        play(start, in: songs)
     }
 
     func togglePlayPause() {
@@ -185,6 +194,7 @@ final class PlayerManager: NSObject {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .default)
         try? session.setActive(true)
+        configureRemoteCommandsIfNeeded()
     }
 
     private func startProgressTimer() {
@@ -212,7 +222,9 @@ final class PlayerManager: NSObject {
 
     // MARK: - Now Playing / Remote Commands
 
-    private func configureRemoteCommands() {
+    private func configureRemoteCommandsIfNeeded() {
+        guard !didConfigureRemoteCommands else { return }
+        didConfigureRemoteCommands = true
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }

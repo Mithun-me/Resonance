@@ -33,6 +33,14 @@ final class StudioEngine {
     private var loadedDistortionPreset: DistortionPreset?
     private var playbackObserver: NSObjectProtocol?
 
+    /// When true, the chain plays the source unprocessed (all effects neutral)
+    /// so the artist can A/B the edit against the original. The settings are
+    /// preserved — toggling back off restores them.
+    var isBypassed = false {
+        didSet { applyConfiguration() }
+    }
+    private var lastSettings = EditSettings()
+
     init() {
         for node in [playerNode, timePitch, eq, distortion, delay, reverb] as [AVAudioNode] {
             engine.attach(node)
@@ -81,6 +89,16 @@ final class StudioEngine {
     // MARK: - Live preview
 
     func apply(_ settings: EditSettings) {
+        lastSettings = settings
+        applyConfiguration()
+    }
+
+    /// Pushes either the current settings or a neutral version (when bypassed)
+    /// onto the audio nodes. Trim is unaffected — it lives in scheduling.
+    private func applyConfiguration() {
+        let settings = isBypassed
+            ? EditSettings(trimStart: lastSettings.trimStart, trimEnd: lastSettings.trimEnd)
+            : lastSettings
         Self.configureEffects(
             timePitch: timePitch, eq: eq, distortion: distortion,
             delay: delay, reverb: reverb, with: settings
