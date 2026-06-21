@@ -11,6 +11,7 @@ import UIKit
 /// this to label and brand tracks they've imported or recorded.
 struct EditSongView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(IntelligenceService.self) private var intelligence
     @Bindable var song: Song
 
     @State private var title: String
@@ -18,6 +19,8 @@ struct EditSongView: View {
     @State private var album: String
     @State private var artworkData: Data?
     @State private var pickerItem: PhotosPickerItem?
+    @State private var isCleaningUp = false
+    @State private var aiError: String?
 
     init(song: Song) {
         self.song = song
@@ -70,6 +73,26 @@ struct EditSongView: View {
                         TextField("Album", text: $album).multilineTextAlignment(.trailing)
                     }
                 }
+
+                if intelligence.isAvailable {
+                    Section {
+                        Button {
+                            Task { await cleanUp() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isCleaningUp {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "sparkles")
+                                }
+                                Text(isCleaningUp ? "Tidying…" : "Clean Up Title with AI")
+                            }
+                        }
+                        .disabled(isCleaningUp || trimmedTitle.isEmpty)
+                    } footer: {
+                        Text("Tidies a messy title (often a filename) into a clean title and artist, on-device. Review before saving.")
+                    }
+                }
             }
             .navigationTitle("Edit Info")
             .navigationBarTitleDisplayMode(.inline)
@@ -83,6 +106,14 @@ struct EditSongView: View {
                 }
             }
             .onChange(of: pickerItem) { loadArtwork() }
+            .alert(
+                "Couldn’t Generate",
+                isPresented: Binding(get: { aiError != nil }, set: { if !$0 { aiError = nil } })
+            ) {
+                Button("OK") {}
+            } message: {
+                Text(aiError ?? "")
+            }
         }
     }
 
@@ -116,6 +147,22 @@ struct EditSongView: View {
             if let data = try? await pickerItem.loadTransferable(type: Data.self) {
                 artworkData = Self.downscaled(data) ?? data
             }
+        }
+    }
+
+    private func cleanUp() async {
+        let raw = trimmedTitle
+        guard !raw.isEmpty else { return }
+        isCleaningUp = true
+        defer { isCleaningUp = false }
+        do {
+            let cleaned = try await intelligence.cleanedMetadata(fromRawTitle: raw)
+            let newTitle = cleaned.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !newTitle.isEmpty { title = newTitle }
+            let newArtist = cleaned.artist.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !newArtist.isEmpty { artist = newArtist }
+        } catch {
+            aiError = error.localizedDescription
         }
     }
 

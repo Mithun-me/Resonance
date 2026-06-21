@@ -12,6 +12,7 @@ import SwiftUI
 struct MithunMusicAppApp: App {
     @State private var playerManager = PlayerManager()
     @State private var appState = AppState()
+    @State private var intelligence = IntelligenceService()
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
@@ -32,6 +33,7 @@ struct MithunMusicAppApp: App {
             ContentView()
                 .environment(playerManager)
                 .environment(appState)
+                .environment(intelligence)
                 .task {
                     SampleLibrary.seedIfNeeded(context: sharedModelContainer.mainContext)
                 }

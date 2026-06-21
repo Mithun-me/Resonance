@@ -9,16 +9,17 @@ import SwiftData
 
 /// Copies audio files picked from the Files app into the library and reads their metadata.
 enum SongImporter {
+    /// Imports the given files and returns the songs that were created.
     @MainActor
-    static func importSongs(from urls: [URL], into context: ModelContext) async -> Int {
-        var imported = 0
+    static func importSongs(from urls: [URL], into context: ModelContext) async -> [Song] {
+        var imported: [Song] = []
         for url in urls {
             let hasAccess = url.startAccessingSecurityScopedResource()
             defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
             do {
                 let song = try await importSong(at: url)
                 context.insert(song)
-                imported += 1
+                imported.append(song)
             } catch {
                 continue
             }

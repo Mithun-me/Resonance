@@ -8,9 +8,11 @@ import SwiftUI
 
 struct PlaylistsView: View {
     @Environment(\.modelContext) private var context
+    @Environment(IntelligenceService.self) private var intelligence
     @Query(sort: \Playlist.dateCreated, order: .reverse) private var playlists: [Playlist]
 
     @State private var isCreatingPlaylist = false
+    @State private var isSmartPlaylist = false
 
     var body: some View {
         NavigationStack {
@@ -31,6 +33,15 @@ struct PlaylistsView: View {
             .listStyle(.plain)
             .navigationTitle("Playlists")
             .toolbar {
+                if intelligence.isAvailable {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            isSmartPlaylist = true
+                        } label: {
+                            Label("Smart Playlist", systemImage: "sparkles")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         isCreatingPlaylist = true
@@ -41,6 +52,9 @@ struct PlaylistsView: View {
             }
             .sheet(isPresented: $isCreatingPlaylist) {
                 CreatePlaylistSheet()
+            }
+            .sheet(isPresented: $isSmartPlaylist) {
+                SmartPlaylistSheet()
             }
             .overlay {
                 if playlists.isEmpty {
@@ -91,12 +105,15 @@ struct PlaylistDetailView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
     @Environment(PlayerManager.self) private var player
+    @Environment(IntelligenceService.self) private var intelligence
     @Bindable var playlist: Playlist
 
     @State private var isAddingSongs = false
     @State private var isRenaming = false
     @State private var draftName = ""
     @State private var isConfirmingDelete = false
+    @State private var isSuggestingMeta = false
+    @State private var aiError: String?
 
     private var songs: [Song] { playlist.sortedSongs }
 
@@ -151,6 +168,14 @@ struct PlaylistDetailView: View {
                     } label: {
                         Label("Rename", systemImage: "pencil")
                     }
+                    if intelligence.isAvailable && !songs.isEmpty {
+                        Button {
+                            Task { await suggestMeta() }
+                        } label: {
+                            Label("Suggest Name & Blurb", systemImage: "sparkles")
+                        }
+                        .disabled(isSuggestingMeta)
+                    }
                     Divider()
                     Button(role: .destructive) {
                         isConfirmingDelete = true
@@ -185,6 +210,14 @@ struct PlaylistDetailView: View {
         } message: {
             Text("This removes the playlist. Your songs stay in the Library.")
         }
+        .alert(
+            "Couldn’t Generate",
+            isPresented: Binding(get: { aiError != nil }, set: { if !$0 { aiError = nil } })
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(aiError ?? "")
+        }
     }
 
     private var header: some View {
@@ -201,6 +234,13 @@ struct PlaylistDetailView: View {
                 Text(playlist.summary)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                if !playlist.note.isEmpty {
+                    Text(playlist.note)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 2)
+                }
             }
 
             HStack(spacing: 12) {
@@ -253,6 +293,21 @@ struct PlaylistDetailView: View {
 
     private func remove(_ song: Song) {
         playlist.songs.removeAll { $0 === song }
+    }
+
+    private func suggestMeta() async {
+        guard !songs.isEmpty else { return }
+        isSuggestingMeta = true
+        defer { isSuggestingMeta = false }
+        do {
+            let titles = songs.map { "\($0.title) — \($0.artist)" }
+            let meta = try await intelligence.playlistMeta(forTrackTitles: titles)
+            let name = meta.name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { playlist.name = name }
+            playlist.note = meta.summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        } catch {
+            aiError = error.localizedDescription
+        }
     }
 }
 

@@ -10,11 +10,14 @@ import SwiftData
 final class Playlist {
     var name: String
     var dateCreated: Date
+    /// Optional one-line description (can be AI-suggested).
+    var note: String = ""
     @Relationship(inverse: \Song.playlists) var songs: [Song] = []
 
-    init(name: String, dateCreated: Date = .now) {
+    init(name: String, dateCreated: Date = .now, note: String = "") {
         self.name = name
         self.dateCreated = dateCreated
+        self.note = note
     }
 
     var sortedSongs: [Song] {

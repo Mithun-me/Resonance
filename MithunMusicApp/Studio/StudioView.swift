@@ -12,6 +12,7 @@ struct StudioView: View {
     @Environment(\.modelContext) private var context
     @Environment(PlayerManager.self) private var player
     @Environment(AppState.self) private var appState
+    @Environment(IntelligenceService.self) private var intelligence
     @Query(sort: \Song.dateAdded, order: .reverse) private var songs: [Song]
 
     @State private var engine = StudioEngine()
@@ -22,6 +23,9 @@ struct StudioView: View {
     @State private var exportedSong: Song?
     @State private var didExportFail = false
     @State private var shareItem: ShareItem?
+    @State private var soundPrompt = ""
+    @State private var isSuggesting = false
+    @State private var aiError: String?
 
     var body: some View {
         NavigationStack {
@@ -75,6 +79,14 @@ struct StudioView: View {
                 Button("OK") {}
             } message: {
                 Text("The track could not be rendered. Try again.")
+            }
+            .alert(
+                "Couldn’t Generate",
+                isPresented: Binding(get: { aiError != nil }, set: { if !$0 { aiError = nil } })
+            ) {
+                Button("OK") {}
+            } message: {
+                Text(aiError ?? "")
             }
         }
         .task(id: appState.studioSong?.persistentModelID) {
@@ -149,6 +161,33 @@ struct StudioView: View {
                     transport
                 }
                 .listRowSeparator(.hidden)
+            }
+
+            if intelligence.isAvailable {
+                Section {
+                    VStack(alignment: .leading, spacing: 10) {
+                        TextField("e.g. “warm lo-fi vocals” or “huge dreamy guitar”",
+                                  text: $soundPrompt, axis: .vertical)
+                            .lineLimit(1...3)
+                        Button {
+                            Task { await suggestEffects() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isSuggesting {
+                                    ProgressView()
+                                } else {
+                                    Image(systemName: "wand.and.stars")
+                                }
+                                Text(isSuggesting ? "Thinking…" : "Suggest Effects")
+                            }
+                        }
+                        .disabled(isSuggesting || soundPrompt.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                } header: {
+                    Label("Describe a Sound", systemImage: "sparkles")
+                } footer: {
+                    Text("On-device AI sets the effects below from your description. Everything stays on your iPhone — tweak anything afterward.")
+                }
             }
 
             Section("Trim") {
@@ -339,6 +378,20 @@ struct StudioView: View {
             peaks = try WaveformLoader.peaks(for: song.fileURL)
         } catch {
             appState.studioSong = nil
+        }
+    }
+
+    private func suggestEffects() async {
+        let prompt = soundPrompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prompt.isEmpty else { return }
+        isSuggesting = true
+        defer { isSuggesting = false }
+        do {
+            let recipe = try await intelligence.effectRecipe(for: prompt)
+            engine.isBypassed = false
+            settings = recipe.applied(to: settings)
+        } catch {
+            aiError = error.localizedDescription
         }
     }
 
