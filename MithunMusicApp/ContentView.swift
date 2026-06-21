@@ -11,29 +11,42 @@ import SwiftUI
 struct ContentView: View {
     @Environment(PlayerManager.self) private var player
     @Environment(AppState.self) private var appState
+    @State private var showSplash = true
 
     var body: some View {
         @Bindable var player = player
         @Bindable var appState = appState
-        TabView(selection: $appState.selectedTab) {
-            Tab("Library", systemImage: "music.note.list", value: AppTab.library) {
-                LibraryView()
+        ZStack {
+            TabView(selection: $appState.selectedTab) {
+                Tab("Library", systemImage: "music.note.list", value: AppTab.library) {
+                    LibraryView()
+                }
+                Tab("Favorites", systemImage: "heart.fill", value: AppTab.favorites) {
+                    FavoritesView()
+                }
+                Tab("Playlists", systemImage: "music.note.square.stack", value: AppTab.playlists) {
+                    PlaylistsView()
+                }
+                Tab("Studio", systemImage: "waveform", value: AppTab.studio) {
+                    StudioView()
+                }
             }
-            Tab("Favorites", systemImage: "heart.fill", value: AppTab.favorites) {
-                FavoritesView()
+            .tabViewBottomAccessory {
+                MiniPlayerBar()
             }
-            Tab("Playlists", systemImage: "music.note.square.stack", value: AppTab.playlists) {
-                PlaylistsView()
+            .sheet(isPresented: $player.isPresentingFullPlayer) {
+                PlayerView()
             }
-            Tab("Studio", systemImage: "waveform", value: AppTab.studio) {
-                StudioView()
+
+            if showSplash {
+                SplashView()
+                    .transition(.opacity)
+                    .zIndex(1)
             }
         }
-        .tabViewBottomAccessory {
-            MiniPlayerBar()
-        }
-        .sheet(isPresented: $player.isPresentingFullPlayer) {
-            PlayerView()
+        .task {
+            try? await Task.sleep(for: .seconds(1.3))
+            withAnimation(.easeInOut(duration: 0.45)) { showSplash = false }
         }
     }
 }
@@ -43,4 +56,5 @@ struct ContentView: View {
         .modelContainer(for: [Song.self, Playlist.self], inMemory: true)
         .environment(PlayerManager())
         .environment(AppState())
+        .environment(IntelligenceService())
 }
